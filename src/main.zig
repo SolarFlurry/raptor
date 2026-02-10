@@ -1,5 +1,6 @@
 const std = @import("std");
 const compiler = @import("compiler.zig");
+const reporter = @import("compiler/reporter.zig");
 
 fn printError(comptime fmt: []const u8, args: anytype) noreturn {
     std.debug.print(fmt, args);
@@ -29,9 +30,11 @@ pub fn main() !void {
     _ = try file.read(buffer);
 
     var lexer = compiler.Lexer.init(buffer);
-    var token = try lexer.nextToken(allocator, .Document);
-    while (token.type != .Eof) {
-        token.print();
-        token = try lexer.nextToken(allocator, .Document);
-    }
+    var parser = try compiler.Parser.init(&lexer, allocator);
+
+    const node = try parser.parse();
+
+    reporter.printErrors(buffer);
+
+    node.print(0, 0, 0);
 }

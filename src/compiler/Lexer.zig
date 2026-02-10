@@ -2,6 +2,7 @@ const std = @import("std");
 
 const Token = @import("Token.zig");
 const Parser = @import("Parser.zig");
+const Span = @import("Span.zig");
 
 const AllocError = std.mem.Allocator.Error;
 
@@ -10,12 +11,14 @@ const Self = @This();
 data: []const u8,
 start: usize,
 current: usize,
+location: Span,
 
 fn makeToken(self: *Self, token_type: Token.Type, allocator: std.mem.Allocator) AllocError!*Token {
     const token = try allocator.create(Token);
     token.* = .{
         .type = token_type,
         .data = self.data[self.start..self.current],
+        .location = self.location,
     };
     return token;
 }
@@ -35,7 +38,19 @@ fn next(self: *Self) void {
     if (self.isEnd()) {
         return;
     }
+    self.location.col += 1;
     self.current += 1;
+    if (self.peek(0) == '\n') {
+        self.location.line += 1;
+        self.location.col = 0;
+    }
+}
+
+fn match(self: *Self, c: u8) bool {
+    if (self.isEnd()) return false;
+    if (self.peek(0) != c) return false;
+    self.next();
+    return true;
 }
 
 pub fn nextToken(self: *Self, allocator: std.mem.Allocator, context: Parser.Context) AllocError!*Token {
@@ -43,22 +58,47 @@ pub fn nextToken(self: *Self, allocator: std.mem.Allocator, context: Parser.Cont
     if (self.isEnd()) {
         return self.makeToken(.Eof, allocator);
     }
+    const c = self.peek(0);
     switch (context) {
         .Document => {
-            if (self.peek(0) == '\\') {
+            if (c == '\\') {
                 self.next();
                 return try self.makeToken(.Backslash, allocator);
             }
+            if (c == '{') {
+                self.next();
+                return try self.makeToken(.LeftBrace, allocator);
+            }
+            if (c == '}') {
+                self.next();
+                return try self.makeToken(.RightBrace, allocator);
+            }
             outer: while (!self.isEnd()) {
                 switch (self.peek(0)) {
-                    '\\' => break :outer,
+                    '\\', '{', '}' => break :outer,
                     else => {},
                 }
                 self.next();
             }
-            return self.makeToken(.Document, allocator);
+            return self.makeToken(.Raw, allocator);
         },
-        .Macro => return self.makeToken(.Eof, allocator),
+        .Macro => {
+            if (std.ascii.isAlphabetic(c)) {
+                while (!self.isEnd() and (std.ascii.isAlphanumeric(self.peek(0)) or self.peek(0) == '_'))
+                    self.next();
+                return try self.makeToken(.Ident, allocator);
+            }
+            self.next();
+            return switch (c) {
+                '{' => self.makeToken(.LeftBrace, allocator),
+                '}' => self.makeToken(.RightBrace, allocator),
+                '(' => self.makeToken(.LeftParen, allocator),
+                ')' => self.makeToken(.RightParen, allocator),
+                else => {
+                    std.debug.panic("Unexpected character '{}'", .{c});
+                },
+            };
+        },
     }
 }
 
@@ -67,5 +107,6 @@ pub fn init(buffer: []const u8) Self {
         .data = buffer,
         .start = 0,
         .current = 0,
+        .location = .{ .col = 0, .line = 0 },
     };
 }
