@@ -1,6 +1,5 @@
 const std = @import("std");
 const compiler = @import("compiler.zig");
-const reporter = @import("compiler/reporter.zig");
 
 fn printError(comptime fmt: []const u8, args: anytype) noreturn {
     std.debug.print(fmt, args);
@@ -12,29 +11,27 @@ pub fn main() !void {
     defer gpa.deinit();
     const allocator = gpa.allocator();
 
+    const cwd = std.fs.cwd();
+
     const args = try std.process.argsAlloc(allocator);
-    if (args.len != 2) {
-        printError("Expected 1 argument\n", .{});
+    if (args.len < 2 or args.len > 3) {
+        printError("Expected 1 or 2 arguments\n", .{});
     }
     const file_path = args[1];
 
-    var cwd = std.fs.cwd();
-    const file = cwd.openFile(file_path, .{}) catch {
-        printError("Error opening {s}\n", .{file_path});
+    var output: std.fs.File = undefined;
+    defer output.close();
+
+    if (args.len == 3) {
+        output = try cwd.createFile(args[2], .{});
+    } else {
+        output = std.fs.File.stdout();
+    }
+
+    compiler.compile(file_path, &output, allocator) catch |err| {
+        if (err == error.FileNotFound) {
+            printError("Could not open file {s}", .{file_path});
+        }
+        printError("Error compiling {s}", .{file_path});
     };
-    defer file.close();
-
-    const stat = try file.stat();
-    const buffer = try allocator.alloc(u8, stat.size);
-
-    _ = try file.read(buffer);
-
-    var lexer = compiler.Lexer.init(buffer);
-    var parser = try compiler.Parser.init(&lexer, allocator);
-
-    const node = try parser.parse();
-
-    reporter.printErrors(buffer);
-
-    node.print(0, 0, 0);
 }

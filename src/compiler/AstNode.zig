@@ -1,14 +1,19 @@
 const std = @import("std");
 
 const Token = @import("Token.zig");
+const reporter = @import("reporter.zig");
 
 const Self = @This();
+
+pub const Root = std.ArrayList(*Self);
+
+const WriteError = error{WriteFailed};
 
 token: *Token,
 data: Data,
 
 pub const Data = union(enum) {
-    document: std.ArrayList(*Self),
+    paragraph: std.ArrayList(*Self),
     raw,
     macro: struct {
         name: []const u8,
@@ -17,6 +22,33 @@ pub const Data = union(enum) {
     },
 };
 
+pub fn writeHtml(self: *Self, writer: *std.io.Writer) WriteError!void {
+    switch (self.data) {
+        .paragraph => |doc| {
+            try writer.writeAll("<p>");
+            for (doc.items) |node| {
+                try node.writeHtml(writer);
+            }
+            try writer.writeAll("</p>\n");
+        },
+        .macro => |macro| {
+            if (std.mem.eql(u8, macro.name, "b")) {
+                if (macro.body) |body| {
+                    try writer.writeAll("<b>");
+                    try body.writeHtml(writer);
+                    try writer.writeAll("</b>");
+                }
+            } else if (std.mem.eql(u8, macro.name, "i")) {
+                if (macro.body) |body| {
+                    try writer.writeAll("<i>");
+                    try body.writeHtml(writer);
+                    try writer.writeAll("</i>");
+                }
+            }
+        },
+        .raw => try writer.writeAll(self.token.data),
+    }
+}
 fn printIndent(indent: u32, has_lines: u64) void {
     for (0..indent) |i| {
         if (((@as(u64, 1) << @as(u6, @intCast(indent - i))) & has_lines) > 0) {
@@ -37,9 +69,9 @@ pub fn print(self: *Self, indent: u32, indent_type: u32, has_lines: u64) void {
     }
     std.debug.print("\x1b[36m", .{});
     switch (self.data) {
-        .document => |doc| {
+        .paragraph => |doc| {
             const len = doc.items.len;
-            std.debug.print("Document\x1b[0m[{}]:\n", .{len});
+            std.debug.print("Paragraph\x1b[0m[{}]:\n", .{len});
             for (0..len) |i| {
                 const node = doc.items[i];
                 if (i < len - 1) {

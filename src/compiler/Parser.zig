@@ -35,25 +35,45 @@ pub fn init(lexer: *Lexer, allocator: std.mem.Allocator) AllocError!Self {
     };
 }
 
-pub fn parse(self: *Self) AllocError!*AstNode {
-    const document = try self.allocator.create(AstNode);
-    document.data = .{ .document = .empty };
+pub fn parse(self: *Self) AllocError!AstNode.Root {
+    var document = AstNode.Root.empty;
 
     while (true) {
-        const slot = try document.data.document.addOne(self.allocator);
+        switch (self.current.type) {
+            .Eof => {
+                break;
+            },
+            else => {
+                const slot = try document.addOne(self.allocator);
+                slot.* = try self.parseParagraph();
+                if (self.current.type == .Eof) {
+                    break;
+                }
+                try self.consume(.ParaSep, "Expected paragraph seperator", .{});
+            },
+        }
+    }
+
+    return document;
+}
+
+fn parseParagraph(self: *Self) AllocError!*AstNode {
+    const paragraph = try self.makeNode(.{ .paragraph = .empty });
+
+    while (true) {
+        const slot = try paragraph.data.paragraph.addOne(self.allocator);
         slot.* = switch (self.current.type) {
             .Backslash => try self.parseMacro(),
-            .Eof => {
-                _ = document.data.document.pop();
+            .Eof, .ParaSep => {
+                _ = paragraph.data.paragraph.pop();
                 break;
             },
             else => try self.parseRaw(.Eof),
         };
     }
 
-    return document;
+    return paragraph;
 }
-
 fn parseRaw(self: *Self, stop_token: Token.Type) AllocError!*AstNode {
     const node = try self.allocator.create(AstNode);
     node.token = try self.allocator.create(Token);

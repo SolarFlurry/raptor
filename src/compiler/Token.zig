@@ -10,6 +10,7 @@ location: Span,
 
 pub const Type = enum {
     Eof,
+    ParaSep,
     Raw,
     Backslash,
     RightBrace,

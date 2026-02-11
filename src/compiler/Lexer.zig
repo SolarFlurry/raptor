@@ -28,7 +28,7 @@ pub inline fn isEnd(self: *Self) bool {
 }
 
 fn peek(self: *Self, index: usize) u8 {
-    if (self.isEnd()) {
+    if (self.current + index >= self.data.len) {
         return 0;
     }
     return self.data[self.current + index];
@@ -73,9 +73,17 @@ pub fn nextToken(self: *Self, allocator: std.mem.Allocator, context: Parser.Cont
                 self.next();
                 return try self.makeToken(.RightBrace, allocator);
             }
+            if (c == '\n' and self.peek(1) == '\n') {
+                self.next();
+                self.next();
+                return try self.makeToken(.ParaSep, allocator);
+            }
             outer: while (!self.isEnd()) {
                 switch (self.peek(0)) {
                     '\\', '{', '}' => break :outer,
+                    '\n' => {
+                        if (self.peek(1) == '\n') break :outer;
+                    },
                     else => {},
                 }
                 self.next();

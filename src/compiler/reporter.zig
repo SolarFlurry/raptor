@@ -23,7 +23,7 @@ pub const Error = struct {
         for (0..self.location.col - 1) |_| {
             std.debug.print(" ", .{});
         }
-        std.debug.print("^ Error occurred here\n\n", .{});
+        std.debug.print("╰──┤ Error occurred here\n\n", .{});
     }
 };
 
