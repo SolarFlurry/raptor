@@ -3,6 +3,7 @@ const std = @import("std");
 const Token = @import("Token.zig");
 const Parser = @import("Parser.zig");
 const Span = @import("Span.zig");
+const Compiler = @import("../Compiler.zig");
 
 const AllocError = std.mem.Allocator.Error;
 
@@ -110,9 +111,9 @@ pub fn nextToken(self: *Self, allocator: std.mem.Allocator, context: Parser.Cont
     }
 }
 
-pub fn init(buffer: []const u8) Self {
+pub fn init(compiler: Compiler) Self {
     return .{
-        .data = buffer,
+        .data = compiler.source,
         .start = 0,
         .current = 0,
         .location = .{ .col = 0, .line = 0 },

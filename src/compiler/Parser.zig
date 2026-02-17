@@ -28,11 +28,11 @@ fn makeNode(self: *Self, value: AstNode.Data) AllocError!*AstNode {
     return node;
 }
 
-pub fn init(lexer: *Lexer) AllocError!Self {
+pub fn init(compiler: Compiler, lexer: *Lexer) AllocError!Self {
     return .{
         .lexer = lexer,
-        .allocator = Compiler.compiler.allocator,
-        .current = try lexer.nextToken(Compiler.compiler.allocator, .Document),
+        .allocator = compiler.allocator,
+        .current = try lexer.nextToken(compiler.allocator, .Document),
         .context = .Document,
     };
 }

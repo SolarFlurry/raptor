@@ -8,12 +8,11 @@ pub const AstNode = @import("Compiler/AstNode.zig");
 pub const Token = @import("Compiler/Token.zig");
 pub const Scope = @import("Compiler/symtable/Scope.zig");
 pub const Symbol = @import("Compiler/symtable/Symbol.zig");
+pub const Transpiler = @import("Compiler/Transpiler.zig");
 
 pub const reporter = @import("Compiler/reporter.zig");
 
 const builtins = @import("Compiler/builtins.zig");
-
-pub var compiler: Self = undefined;
 
 allocator: std.mem.Allocator,
 parser: Parser,
@@ -25,7 +24,7 @@ pub fn compile(
     output_stream: *std.fs.File,
     allocator: std.mem.Allocator,
 ) !void {
-    compiler = Self{
+    var compiler = Self{
         .allocator = allocator,
         .parser = undefined,
         .source = undefined,
@@ -42,12 +41,12 @@ pub fn compile(
     _ = try file.read(file_data);
     compiler.source = file_data;
 
-    var lexer = Lexer.init(compiler.source);
-    var parser = try Parser.init(&lexer);
+    var lexer = Lexer.init(compiler);
+    var parser = try Parser.init(compiler, &lexer);
     compiler.parser = parser;
 
     var symtable = Scope.init();
-    try builtins.populateSymtable(&symtable);
+    try builtins.populateSymtable(compiler, &symtable);
     compiler.top_scope = &symtable;
 
     const document = try parser.parse();
@@ -66,8 +65,12 @@ pub fn compile(
     var buffer: [1024]u8 = undefined;
     var writer = output_stream.writer(&buffer);
 
-    for (document.items) |node| {
-        try node.writeHtml(&writer.interface, &symtable);
+    var transpiler = Transpiler.init(compiler);
+
+    const tree = try transpiler.transpile(document, &symtable);
+
+    for (tree.items) |inner| {
+        try inner.writeHtml(&writer.interface);
     }
 
     try writer.interface.writeByte('\n');
