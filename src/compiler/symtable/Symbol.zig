@@ -15,7 +15,7 @@ pub const Value = union(enum) {
         args: std.ArrayList(*AstNode),
         body: ?*AstNode,
         scope: *Scope,
-    ) error{OutOfMemory}!Transpiler.HtmlTree,
+    ) error{OutOfMemory}!*Transpiler.HtmlTree,
     macro: *AstNode,
     str: []const u8,
 };

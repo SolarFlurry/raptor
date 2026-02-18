@@ -73,6 +73,5 @@ pub fn compile(
         try inner.writeHtml(&writer.interface);
     }
 
-    try writer.interface.writeByte('\n');
     try writer.interface.flush();
 }

@@ -12,19 +12,21 @@ pub fn boldBuiltin(
     _: std.ArrayList(*AstNode),
     body: ?*AstNode,
     scope: *Scope,
-) error{OutOfMemory}!Transpiler.HtmlTree {
-    if (body) |value| {
-        return .{
-            .kind = .{ .tag = .{
-                .first_child = try ctx.transpileNode(value, scope),
-                .name = "b",
-            } },
-            .sibling = null,
-        };
-    } else return .{
+) error{OutOfMemory}!*Transpiler.HtmlTree {
+    const tree = try ctx.allocator.create(Transpiler.HtmlTree);
+
+    tree.* = if (body) |value| .{
+        .kind = .{ .tag = .{
+            .first_child = try ctx.transpileNode(value, scope),
+            .name = "b",
+        } },
+        .sibling = null,
+    } else .{
         .kind = .{ .leaf = "" },
         .sibling = null,
     };
+
+    return tree;
 }
 
 pub fn italicBuiltin(
@@ -32,19 +34,21 @@ pub fn italicBuiltin(
     _: std.ArrayList(*AstNode),
     body: ?*AstNode,
     scope: *Scope,
-) error{OutOfMemory}!Transpiler.HtmlTree {
-    if (body) |value| {
-        return .{
-            .kind = .{ .tag = .{
-                .first_child = try ctx.transpileNode(value, scope),
-                .name = "i",
-            } },
-            .sibling = null,
-        };
-    } else return .{
+) error{OutOfMemory}!*Transpiler.HtmlTree {
+    const tree = try ctx.allocator.create(Transpiler.HtmlTree);
+
+    tree.* = if (body) |value| .{
+        .kind = .{ .tag = .{
+            .first_child = try ctx.transpileNode(value, scope),
+            .name = "i",
+        } },
+        .sibling = null,
+    } else .{
         .kind = .{ .leaf = "" },
         .sibling = null,
     };
+
+    return tree;
 }
 
 pub fn populateSymtable(compiler: Compiler, symtable: *Scope) !void {

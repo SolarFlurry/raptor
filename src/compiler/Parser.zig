@@ -37,45 +37,80 @@ pub fn init(compiler: Compiler, lexer: *Lexer) AllocError!Self {
     };
 }
 
-pub fn parse(self: *Self) AllocError!AstNode.Root {
-    var document = AstNode.Root.empty;
+pub fn parse(self: *Self) AllocError!std.ArrayList(*AstNode) {
+    return (try self.parseMarkup(.Eof)).data.section.elements;
+}
+
+fn parseMarkup(self: *Self, stop_token: Token.Type) AllocError!*AstNode {
+    var node = try self.parseSection(stop_token);
+
+    if (self.current.type != .ParaSep) {
+        return node;
+    }
+
+    try self.next();
+
+    var slice = [_]*AstNode{node};
+    const temp = try self.makeNode(.{
+        .section = .{
+            .elements = .fromOwnedSlice(slice[0..1]),
+            .is_paragraph = false,
+        },
+    });
+    node.*.data.section.is_paragraph = true;
+    node = temp;
 
     while (true) {
+        if (self.current.type == stop_token) {
+            break;
+        }
         switch (self.current.type) {
             .Eof => {
                 break;
             },
             else => {
-                const slot = try document.addOne(self.allocator);
-                slot.* = try self.parseSection();
-                if (self.current.type == .Eof) {
+                const slot = try node.data.section.elements.addOne(self.allocator);
+                slot.* = try self.parseSection(stop_token);
+                slot.*.data.section.is_paragraph = true;
+                if (self.current.type == .Eof or self.current.type == stop_token) {
                     break;
                 }
                 try self.consume(.ParaSep, "Expected paragraph seperator", .{});
+                while (self.current.type == .ParaSep) {
+                    try self.next();
+                }
             },
         }
     }
-
-    return document;
+    return node;
 }
 
-fn parseSection(self: *Self) AllocError!*AstNode {
-    const section = try self.makeNode(.{ .section = .empty });
+fn parseSection(self: *Self, stop_token: Token.Type) AllocError!*AstNode {
+    const section = try self.makeNode(.{
+        .section = .{
+            .elements = .empty,
+            .is_paragraph = false,
+        },
+    });
 
     while (true) {
-        const slot = try section.data.section.addOne(self.allocator);
+        if (self.current.type == stop_token) {
+            break;
+        }
+        const slot = try section.data.section.elements.addOne(self.allocator);
         slot.* = switch (self.current.type) {
             .Backslash => try self.parseMacro(),
             .Eof, .ParaSep => {
-                _ = section.data.section.pop();
+                _ = section.data.section.elements.pop();
                 break;
             },
-            else => try self.parseRaw(.Eof),
+            else => try self.parseRaw(stop_token),
         };
     }
 
     return section;
 }
+
 fn parseRaw(self: *Self, stop_token: Token.Type) AllocError!*AstNode {
     const node = try self.allocator.create(AstNode);
     node.token = try self.allocator.create(Token);
@@ -123,7 +158,7 @@ fn parseMacro(self: *Self) AllocError!*AstNode {
     self.context = .Document;
     if (self.current.type == .LeftBrace) {
         try self.next();
-        node.data.macro.body = try self.parseRaw(.RightBrace);
+        node.data.macro.body = try self.parseMarkup(.RightBrace);
         try self.consume(.RightBrace, "Expected matching '}}'", .{});
     }
 

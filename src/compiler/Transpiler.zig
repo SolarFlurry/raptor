@@ -21,6 +21,14 @@ pub const HtmlTree = struct {
         leaf: []const u8,
     };
 
+    pub fn add_sibling(self: *HtmlTree, sibling: *HtmlTree) void {
+        var current: *?*HtmlTree = &self.sibling;
+        while (current.*) |tree| {
+            current = &tree.sibling;
+        }
+        current.* = sibling;
+    }
+
     pub fn writeHtml(self: *HtmlTree, writer: *std.Io.Writer) error{WriteFailed}!void {
         switch (self.kind) {
             .tag => |tag| {
@@ -42,31 +50,39 @@ pub const HtmlTree = struct {
 };
 
 pub fn transpileNode(self: *Self, node: *const AstNode, scope: *Scope) AllocError!*HtmlTree {
-    const tree = try self.allocator.create(HtmlTree);
+    const tree: ?*HtmlTree = switch (node.data) {
+        .section => |doc| blk: {
+            const data = inner: {
+                var first: ?*HtmlTree = null;
+                var last: ?*HtmlTree = null;
+                for (doc.elements.items) |inner| {
+                    const inner_tree = try self.transpileNode(inner, scope);
+                    if (first == null) {
+                        first = inner_tree;
+                        last = first;
+                        continue;
+                    }
+                    last.?.add_sibling(inner_tree);
+                    last = inner_tree;
+                }
+                break :inner first;
+            };
 
-    tree.* = switch (node.data) {
-        .section => |doc| .{
-            .kind = .{
-                .tag = .{
-                    .first_child = blk: {
-                        var first: ?*HtmlTree = null;
-                        var last: ?*HtmlTree = null;
-                        for (doc.items) |inner| {
-                            const inner_tree = try self.transpileNode(inner, scope);
-                            if (first == null) {
-                                first = inner_tree;
-                                last = first;
-                                continue;
-                            }
-                            last.?.sibling = inner_tree;
-                            last = inner_tree;
-                        }
-                        break :blk first;
-                    },
+            if (!doc.is_paragraph) {
+                break :blk data;
+            }
+
+            const tree = try self.allocator.create(HtmlTree);
+
+            tree.* = .{
+                .kind = .{ .tag = .{
+                    .first_child = data,
                     .name = "p",
-                },
-            },
-            .sibling = null,
+                } },
+                .sibling = null,
+            };
+
+            break :blk tree;
         },
         .macro => |macro| blk: {
             if (scope.findSymbol(macro.name)) |symbol| {
@@ -83,15 +99,29 @@ pub fn transpileNode(self: *Self, node: *const AstNode, scope: *Scope) AllocErro
                 }
             } else std.debug.panic("cannot find name '{s}' in symbol table", .{macro.name});
         },
-        .raw => .{
-            .kind = .{
-                .leaf = node.token.data,
-            },
-            .sibling = null,
+        .raw => blk: {
+            const tree = try self.allocator.create(HtmlTree);
+            tree.* = .{
+                .kind = .{
+                    .leaf = node.token.data,
+                },
+                .sibling = null,
+            };
+
+            break :blk tree;
         },
     };
 
-    return tree;
+    if (tree) |inner| {
+        return inner;
+    }
+
+    const result = try self.allocator.create(HtmlTree);
+    result.* = .{
+        .kind = .{ .leaf = "" },
+        .sibling = null,
+    };
+    return result;
 }
 
 pub fn transpile(self: *Self, nodes: std.ArrayList(*AstNode), scope: *Scope) AllocError!std.ArrayList(*HtmlTree) {
